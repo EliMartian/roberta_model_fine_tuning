@@ -1,5 +1,5 @@
 # roberta_model_fine_tuning
-Fine tuning the RoBERTa model on a Kaggle toxicity-subclassification data set to be applied to Twitch stream comments to classify them into different 
+Fine tuning the RoBERTa model on a Kaggle toxicity subclassification data set to be applied to Twitch stream comments to classify them into different 
 sub-categories of toxicity. Test and Train files not included as they exceed the size limit on Github. 
 
 Kaggle Original Dataset: https://www.kaggle.com/c/jigsaw-unintended-bias-in-toxicity-classification/data?select=train.csv 
