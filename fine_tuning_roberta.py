@@ -78,6 +78,34 @@ toxicity_test_df['toxic'] = toxicity_test_df['toxic'].astype(float)
 toxicity_train_df = toxicity_train_df[['comment_text', 'toxic', 'obscene', 'sexual_explicit', 'threat', 'insult', 'identity_attack']]
 toxicity_test_df = toxicity_test_df[['comment_text', 'toxic', 'obscene', 'sexual_explicit', 'threat', 'insult', 'identity_attack']]
 
+
+# Fraction of the majority class you want to keep (e.g., 0.2 for 20%)
+undersample_fraction = 0.33
+
+# Separate the majority and minority classes in training data
+majority_class_train = toxicity_train_df[toxicity_train_df['toxic'] == 0]
+minority_class_train = toxicity_train_df[toxicity_train_df['toxic'] == 1]
+
+# Undersample the majority class in training data
+undersampled_majority_class_train = majority_class_train.sample(frac=undersample_fraction, random_state=42)
+
+# Concatenate the undersampled majority class with the minority class in training data
+undersampled_train_df = pd.concat([undersampled_majority_class_train, minority_class_train])
+
+# Shuffle the undersampled training dataframe
+toxicity_train_df = undersampled_train_df.sample(frac=1, random_state=42).reset_index(drop=True)
+
+# Separate the majority and minority classes in test data
+majority_class_test = toxicity_test_df[toxicity_test_df['toxic'] == 0]
+minority_class_test = toxicity_test_df[toxicity_test_df['toxic'] == 1]
+
+# Display the class distribution before and after undersampling
+print("\nClass distribution in training data after undersampling:")
+print(toxicity_train_df['toxic'].value_counts())
+
+print("\nClass distribution in test data before undersampling:")
+print(toxicity_test_df['toxic'].value_counts())
+
 """Test Lengths of DFs"""
 
 print(len(toxicity_train_df))
@@ -195,18 +223,36 @@ test_dataset = ToxicDataset(test_encodings, test_labels)
 
 from transformers import EarlyStoppingCallback, Trainer, TrainingArguments
 
+# training_args = TrainingArguments(
+#     output_dir='./results',
+#     num_train_epochs=1,
+#     per_device_train_batch_size=4,
+#     per_device_eval_batch_size=16,
+#     warmup_steps=100,
+#     learning_rate=1e-4,
+#     weight_decay=0.01,
+#     logging_dir='./logs',
+#     logging_steps=5000,
+#     evaluation_strategy="steps",
+#     eval_steps=5000,
+#     save_strategy="steps",
+#     load_best_model_at_end=True,
+#     metric_for_best_model="eval_loss",
+# )
+
 training_args = TrainingArguments(
     output_dir='./results',
     num_train_epochs=2,
     per_device_train_batch_size=16,
     per_device_eval_batch_size=64,
-    warmup_steps=200,
-    learning_rate=1e-4,
+    warmup_steps=100,
+    learning_rate=1e-5,
     weight_decay=0.01,
     logging_dir='./logs',
-    logging_steps=10,
+    logging_steps=1000,
     evaluation_strategy="steps",
     save_strategy="steps",
+    save_steps=1000,  # Set save_steps to the same value as logging_steps
     load_best_model_at_end=True,
     metric_for_best_model="eval_loss",
 )
@@ -254,33 +300,59 @@ accuracy = accuracy_score(true_labels, predicted_labels)
 print(f"Accuracy: {accuracy}")
 print(classification_report(true_labels, predicted_labels))
 
+
+
+# Count occurrences of each class in true labels
+true_label_counts = np.bincount(true_labels.astype(int))
+
+# Count occurrences of each class in predicted labels
+predicted_label_counts = np.bincount(predicted_labels.numpy().astype(int))
+
+# Print the counts
+print("True Label Counts (Class 0 and 1):", true_label_counts)
+print("Predicted Label Counts (Class 0 and 1):", predicted_label_counts)
+
 """# Predictions on Twitch Dataset"""
 
 import pandas as pd
-from transformers import RobertaTokenizer
+from transformers import RobertaTokenizer, AutoModelForSequenceClassification
 from transformers import pipeline
 
 # Load the fine-tuned model for inference
-tokenizer = RobertaTokenizer.from_pretrained('/content/results/checkpoint-500/')
+tokenizer = RobertaTokenizer.from_pretrained('/content/results/checkpoint-2000/')
+model = AutoModelForSequenceClassification.from_pretrained('/content/results/checkpoint-2000/')
 
 twitch_df = pd.read_csv('twitch_toxicity.csv')
 print(twitch_df.head(6))
+print(twitch_df.info())
 
 # Create a text classification pipeline
 classifier = pipeline('text-classification', model=model, tokenizer=tokenizer)
 
 # Example function to apply the classifier to each row in the DataFrame
+# count = 0
+
+# Function to convert LABEL_0 to 'no'
+def convert_label(prediction):
+    return 'no' if prediction[0]['label'] == 'LABEL_0' else 'yes'
+
+# Example function to apply the classifier to each row in the DataFrame
 def predict_label(row):
     text_to_predict = row['comment_text']
     prediction = classifier(text_to_predict)
-    print("text_to_pred:")
-    print(text_to_predict)
-    print(f"prediction: {prediction}")
-    return prediction
+    return convert_label(prediction)
 
 # Apply the prediction function to each row in the DataFrame
-twitch_df['roberta_prediction'] = twitch_df.apply(predict_label, axis=1)
+twitch_df['roberta_prediction'] = twitch_df.head(300).apply(predict_label, axis=1)
+# twitch_df['roberta_prediction'] = twitch_df.apply(predict_label, axis=1)
 
 # Display the DataFrame with predictions
-print(twitch_df[['comment_text', 'roberta_prediction']])
+print(twitch_df.head(300)[['comment_text', 'roberta_prediction', 'toxic']])
+
+# Assuming 'LABEL_0' corresponds to 'no'
+prediction_counts = twitch_df.head(300)['roberta_prediction'].value_counts()
+
+# Print the counts
+print("Count of 'no':", prediction_counts.get('no', 0))
+print("Count of 'yes':", prediction_counts.get('yes', 0))  # Adjust the label if needed
 
