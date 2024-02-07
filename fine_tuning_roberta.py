@@ -18,6 +18,7 @@ Original file is located at
 # !pip install transformers
 # !pip install pytorch-lightning
 # !pip install --upgrade transformers
+# !pip install datasets
 
 """# Preprocessing"""
 
@@ -143,34 +144,62 @@ plt.show()
 
 """# Splitting and Labelling"""
 
+# model_name = "roberta-base"
+
+# toxicity_train_df.reset_index(drop=True, inplace=True)
+# toxicity_test_df.reset_index(drop=True, inplace=True)
+
+# X_train = toxicity_train_df[['comment_text']].reset_index(drop=True)
+# X_train = X_train.dropna()
+
+# # y_train = toxicity_train_df[['obscene', 'identity_attack', 'insult', 'threat', 'sexual_explicit']]
+# y_train = toxicity_train_df[['toxic']].reset_index(drop=True)
+# y_train = y_train.dropna()
+# # toxicity_train_df.info()
+
+
+# # toxicity_test_df.info()
+# X_test = toxicity_test_df[['comment_text']].reset_index(drop=True)
+# X_test = X_test.dropna()
+# # # y_test = toxicity_test_df[['obscene', 'identity_attack', 'insult', 'threat', 'sexual_explicit']]
+# y_test = toxicity_test_df[['toxic']].reset_index(drop=True)
+# y_test = y_test.dropna()
+
+
+# train_texts = X_train['comment_text'].tolist()
+# train_labels = y_train
+# test_texts = X_test['comment_text'].tolist()
+# test_labels = y_test
+
+# # See examples of texts & labels
+# print("train_texts:")
+# print(train_texts[:5])
+# print("train_labels:")
+# print(train_labels[:5])
+# print("test_texts")
+# print(test_texts[:5])
+# print("test_labels:")
+# print(test_labels[:5])
+
+# train_texts, val_texts, train_labels, val_labels = train_test_split(train_texts, train_labels, test_size=0.2, random_state=42)
+
 model_name = "roberta-base"
 
+# Reset index to ensure consistency
 toxicity_train_df.reset_index(drop=True, inplace=True)
 toxicity_test_df.reset_index(drop=True, inplace=True)
 
-X_train = toxicity_train_df[['comment_text']].reset_index(drop=True)
-X_train = X_train.dropna()
+# Select relevant columns from DataFrame and drop NaN values
+train_data = toxicity_train_df[['comment_text', 'toxic']].dropna()
+test_data = toxicity_test_df[['comment_text', 'toxic']].dropna()
 
-# y_train = toxicity_train_df[['obscene', 'identity_attack', 'insult', 'threat', 'sexual_explicit']]
-y_train = toxicity_train_df[['toxic']].reset_index(drop=True)
-y_train = y_train.dropna()
-# toxicity_train_df.info()
+# Extract features and labels
+train_texts = train_data['comment_text'].tolist()
+train_labels = train_data['toxic'].tolist()
+test_texts = test_data['comment_text'].tolist()
+test_labels = test_data['toxic'].tolist()
 
-
-# toxicity_test_df.info()
-X_test = toxicity_test_df[['comment_text']].reset_index(drop=True)
-X_test = X_test.dropna()
-# # y_test = toxicity_test_df[['obscene', 'identity_attack', 'insult', 'threat', 'sexual_explicit']]
-y_test = toxicity_test_df[['toxic']].reset_index(drop=True)
-y_test = y_test.dropna()
-
-
-train_texts = X_train['comment_text'].tolist()
-train_labels = y_train
-test_texts = X_test['comment_text'].tolist()
-test_labels = y_test
-
-# See examples of texts & labels
+# Print examples of texts & labels
 print("train_texts:")
 print(train_texts[:5])
 print("train_labels:")
@@ -180,7 +209,8 @@ print(test_texts[:5])
 print("test_labels:")
 print(test_labels[:5])
 
-train_texts, val_texts, train_labels, val_labels = train_test_split(train_texts, train_labels, test_size=0.2, random_state=42)
+# Split train data into train and validation sets
+train_texts, val_texts, train_labels, val_labels = train_test_split(train_texts, train_labels, test_size=0.2)
 
 """# Dataset"""
 
@@ -206,68 +236,114 @@ train_encodings = tokenizer(train_texts, truncation=True, padding=True)
 val_encodings = tokenizer(val_texts, truncation=True, padding=True)
 test_encodings = tokenizer(test_texts, truncation=True, padding=True)
 
-train_labels = train_labels['toxic'].reset_index(drop=True)
-val_labels = val_labels['toxic'].reset_index(drop=True)
-test_labels = test_labels['toxic'].reset_index(drop=True)
-
-# Convert Pandas Series to lists
-train_labels_list = train_labels.tolist()
-val_labels_list = val_labels.tolist()
-test_labels_list = test_labels.tolist()
-
 train_dataset = ToxicDataset(train_encodings, train_labels)
 val_dataset = ToxicDataset(val_encodings, val_labels)
 test_dataset = ToxicDataset(test_encodings, test_labels)
 
+print("Train Dataset")
+# Iterate over train_dataset and print some samples
+for i in range(3):  # Print first 3 samples
+    sample = train_dataset[i]
+    print(f"Sample {i + 1}:")
+    # Convert input_ids tensor to list and access its keys
+    encoding_keys = tokenizer.convert_ids_to_tokens(sample["input_ids"].tolist())
+    print("Encoding keys:", encoding_keys)  # Print keys of encoding
+    print("Label:", sample["labels"].item())  # Print label
+    print()
+
+print("Val Dataset")
+# Iterate over val dataset and print some samples
+for i in range(3):  # Print first 3 samples
+    sample = val_dataset[i]
+    print(f"Sample {i + 1}:")
+    # Convert input_ids tensor to list and access its keys
+    encoding_keys = tokenizer.convert_ids_to_tokens(sample["input_ids"].tolist())
+    print("Encoding keys:", encoding_keys)  # Print keys of encoding
+    print("Label:", sample["labels"].item())  # Print label
+    print()
+
+print("Test Dataset")
+# Iterate over test dataset and print some samples
+for i in range(3):  # Print first 3 samples
+    sample = test_dataset[i]
+    print(f"Sample {i + 1}:")
+    # Convert input_ids tensor to list and access its keys
+    encoding_keys = tokenizer.convert_ids_to_tokens(sample["input_ids"].tolist())
+    print("Encoding keys:", encoding_keys)  # Print keys of encoding
+    print("Label:", sample["labels"].item())  # Print label
+    print()
+
 """# Tokenizer + Encodings + Training"""
 
-from transformers import EarlyStoppingCallback, Trainer, TrainingArguments
+from transformers import AutoModelForSequenceClassification, Trainer, TrainingArguments
+from datasets import load_metric
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score
 
-# training_args = TrainingArguments(
-#     output_dir='./results',
-#     num_train_epochs=1,
-#     per_device_train_batch_size=4,
-#     per_device_eval_batch_size=16,
-#     warmup_steps=100,
-#     learning_rate=1e-4,
-#     weight_decay=0.01,
-#     logging_dir='./logs',
-#     logging_steps=5000,
-#     evaluation_strategy="steps",
-#     eval_steps=5000,
-#     save_strategy="steps",
-#     load_best_model_at_end=True,
-#     metric_for_best_model="eval_loss",
-# )
+def compute_metrics(pred):
+    labels = pred.label_ids
+    preds = pred.predictions.squeeze()
 
+    # Apply sigmoid activation function to convert logits to probabilities
+    preds = 1 / (1 + np.exp(-preds))
+
+    # Round probabilities to get binary predictions
+    binary_preds = np.round(preds)
+
+    # Calculate accuracy
+    accuracy = accuracy_score(labels, binary_preds)
+
+    # Calculate precision, recall, and F1-score
+    precision, recall, f1, _ = precision_recall_fscore_support(labels, binary_preds, average='binary')
+
+    # Calculate AUC-ROC
+    auc_roc = roc_auc_score(labels, preds)
+
+    return {
+        'accuracy': accuracy,
+        'precision': precision,
+        'recall': recall,
+        'f1': f1,
+        'auc_roc': auc_roc
+    }
+
+# Define the model with BCE loss
+model = AutoModelForSequenceClassification.from_pretrained('roberta-base', num_labels=1)
+
+# Define the BCE loss function
+loss_function = "bce_with_logits"  # Binary Cross-Entropy Loss
+
+# Define the training arguments (GPU Version)
 training_args = TrainingArguments(
     output_dir='./results',
     num_train_epochs=2,
     per_device_train_batch_size=16,
     per_device_eval_batch_size=64,
-    warmup_steps=100,
+    warmup_steps=200,
     learning_rate=1e-5,
     weight_decay=0.01,
     logging_dir='./logs',
-    logging_steps=1000,
+    logging_steps=1230,
     evaluation_strategy="steps",
     save_strategy="steps",
-    save_steps=1000,  # Set save_steps to the same value as logging_steps
+    save_steps=1230,
     load_best_model_at_end=True,
     metric_for_best_model="eval_loss",
 )
 
-model = AutoModelForSequenceClassification.from_pretrained('roberta-base', num_labels=1)
 
+# Create the Trainer
 trainer = Trainer(
     model=model,
     args=training_args,
     train_dataset=train_dataset,
     eval_dataset=val_dataset,
     tokenizer=tokenizer,
-    callbacks=[EarlyStoppingCallback(early_stopping_patience=1, early_stopping_threshold=0.02)],
+    compute_metrics=compute_metrics
 )
+
+# Train the model
 trainer.train()
+
 
 model.save_pretrained('/results/fine_tuned_roberta_model')
 
@@ -277,6 +353,7 @@ model.save_pretrained('/results/fine_tuned_roberta_model')
 
 """# Evaluation"""
 
+import numpy as np
 from sklearn.metrics import accuracy_score, classification_report
 
 # Use the trained model for evaluation
@@ -293,14 +370,12 @@ predicted_probabilities = torch.nn.functional.softmax(torch.tensor(predictions.p
 predicted_labels = torch.argmax(predicted_probabilities, dim=1)
 
 # Flatten the true labels
-true_labels = val_labels.values.flatten()
+true_labels = np.array(val_labels)
 
 # Calculate accuracy and print classification report
 accuracy = accuracy_score(true_labels, predicted_labels)
 print(f"Accuracy: {accuracy}")
 print(classification_report(true_labels, predicted_labels))
-
-
 
 # Count occurrences of each class in true labels
 true_label_counts = np.bincount(true_labels.astype(int))
@@ -319,8 +394,8 @@ from transformers import RobertaTokenizer, AutoModelForSequenceClassification
 from transformers import pipeline
 
 # Load the fine-tuned model for inference
-tokenizer = RobertaTokenizer.from_pretrained('/content/results/checkpoint-2000/')
-model = AutoModelForSequenceClassification.from_pretrained('/content/results/checkpoint-2000/')
+tokenizer = RobertaTokenizer.from_pretrained('/content/results/checkpoint-1230/')
+model = AutoModelForSequenceClassification.from_pretrained('/content/results/checkpoint-1230/')
 
 twitch_df = pd.read_csv('twitch_toxicity.csv')
 print(twitch_df.head(6))
