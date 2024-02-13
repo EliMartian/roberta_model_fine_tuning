@@ -610,8 +610,7 @@ count = 0
 def predict_label(row):
     global count
     text_to_predict = row['comment_text']
-    if(count <100):
-      print(text_to_predict)
+
     encoding = tokenizer(text_to_predict, return_tensors='pt', padding=True, truncation=True)
     input_ids = encoding['input_ids'].to(device)
     attention_mask = encoding['attention_mask'].to(device)
@@ -619,14 +618,15 @@ def predict_label(row):
         outputs = model(input_ids, attention_mask=attention_mask)
     logits = outputs.logits
     probabilities = torch.sigmoid(logits).cpu().numpy().flatten()
-    if(count <100):
-      print(probabilities)
+    # if(count <100):
+    #   print(probabilities)
     # Convert probabilities to binary labels
     binary_label = 1 if ((np.abs(probabilities[1] - probabilities[0]) <= 0.035) and (probabilities[1] > 0.5275) and (probabilities[0] < 0.494)) else 0
     count = count + 1
-    if (count % 100 == 0):
-      print(count)
-    if(count <100):
+    # if (count % 100 == 0):
+    #   print(count)
+    if(count <10):
+      print(text_to_predict)
       print(np.abs(probabilities[1] - probabilities[0]))
       print(binary_label)
     # if (binary_label == 1):
@@ -638,18 +638,72 @@ twitch_df = pd.read_csv('twitch_toxicity.csv')
 print(len(twitch_df))
 
 # Apply the prediction function to each row in the DataFrame
-twitch_df['roberta_prediction'] = twitch_df.head(200).apply(predict_label, axis=1)
+twitch_df['roberta_prediction'] = twitch_df.head(2000).apply(predict_label, axis=1)
 
 # Display the DataFrame with predictions
 print(twitch_df[['comment_text', 'roberta_prediction']])
 
 # Assuming 'LABEL_0' corresponds to 'no'
-prediction_counts = twitch_df.head(200)['roberta_prediction'].value_counts()
+prediction_counts = twitch_df.head(2000)['roberta_prediction'].value_counts()
 print(prediction_counts)
 
 # Print the counts
 print("Count of 'no':", prediction_counts[0.0])
 print("Count of 'yes':", prediction_counts[1.0])  # Adjust the label if needed
+
+"""# Base Toxic Word Cloud"""
+
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+from nltk.corpus import stopwords
+import nltk
+import pandas as pd
+import string
+
+# Download NLTK resources (run only once)
+nltk.download('stopwords')
+nltk.download('punkt')
+
+# Filter toxic comments
+toxic_comments = twitch_df[twitch_df['roberta_prediction'] == 1]['comment_text']
+print(toxic_comments.head(5))
+
+# Initialize NLTK stop words
+stop_words = set(stopwords.words('english'))
+
+# Extend the stop words list with additional common words to exclude
+additional_stop_words = ['today', "don't", 'like', 'know', 'and', 'the',
+                         'get', 'HasanAbi', 'hasanabi', 'Hasan', 'hasan', 'Abi',
+                         'dont', ',', 'got', 'cant', 'make',
+                         'see', 'im', 'make', 'think', 'one', 'every',
+                         'take', 'day', 'really', 'Tier', 'tier', 'Tier 1',
+                         '1', 'Theyve', 'theyve', 'going', 'subscribed', 'months']  # Add more words as needed
+stop_words.update(additional_stop_words)
+
+# Remove punctuation from comments
+def remove_punctuation(text):
+    return ''.join([char for char in text if char not in string.punctuation])
+
+cleaned_comments = ' '.join([comment for comment in toxic_comments])
+cleaned_comments = remove_punctuation(cleaned_comments)
+
+# Tokenize the cleaned comments
+tokens = nltk.word_tokenize(cleaned_comments)
+
+# Remove stop words
+tokens = [word for word in tokens if word.lower() not in stop_words]
+
+# Calculate word frequencies
+freq_dist = nltk.FreqDist(tokens)
+
+# Generate the word cloud with frequencies
+wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(freq_dist)
+
+# Plot the word cloud
+plt.figure(figsize=(10, 5))
+plt.imshow(wordcloud, interpolation='bilinear')
+plt.axis('off')
+plt.show()
 
 """# Fine-Tuned Roberta on Twitch Dataset"""
 
@@ -709,12 +763,13 @@ def predict_label(row):
     count = count + 1
     # if (count % 100 == 0):
     #   print(count)
-    # if(count <100):
-    #   print(np.abs(probabilities[0]))
-    #   print(binary_label)
+    if(count < 10):
+      print(np.abs(probabilities[0]))
+      print(text_to_predict)
+      print(binary_label)
     # if (binary_label == 1):
     #   print(text_to_predict)
-    print(binary_label)
+    # print(binary_label)
     return binary_label
 
 # Load the Twitch dataset
@@ -722,527 +777,68 @@ twitch_df = pd.read_csv('twitch_toxicity.csv')
 print(len(twitch_df))
 
 # Apply the prediction function to each row in the DataFrame
-twitch_df['roberta_prediction'] = twitch_df.head(500).apply(predict_label, axis=1)
+twitch_df['roberta_prediction'] = twitch_df.head(2000).apply(predict_label, axis=1)
 
 # Display the DataFrame with predictions
 print(twitch_df[['comment_text', 'roberta_prediction']])
 
 # Assuming 'LABEL_0' corresponds to 'no'
-prediction_counts = twitch_df.head(500)['roberta_prediction'].value_counts()
+prediction_counts = twitch_df.head(2000)['roberta_prediction'].value_counts()
 print(prediction_counts)
 
 # Print the counts
 print("Count of 'no':", prediction_counts[0.0])
 print("Count of 'yes':", prediction_counts[1.0])  # Adjust the label if needed
 
-space_delimited_data = """
-0
-0
-0
-1
-0
-0
-0
-0
-0
-1
-0
-0
-1
-0
-1
-0
-0
-0
-0
-0
-1
-0
-0
-0
-0
-1
-0
-1
-0
-1
-0
-0
-0
-0
-1
-0
-0
-1
-1
-0
-0
-0
-0
-0
-0
-1
-0
-0
-1
-1
-0
-0
-1
-0
-1
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-1
-0
-0
-0
-0
-1
-0
-1
-0
-0
-0
-0
-0
-0
-0
-1
-0
-0
-1
-0
-0
-0
-0
-0
-0
-0
-1
-0
-0
-0
-0
-1
-1
-0
-0
-0
-1
-0
-0
-1
-1
-0
-0
-0
-1
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-1
-1
-0
-0
-1
-0
-0
-0
-0
-0
-0
-1
-0
-0
-1
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-1
-0
-0
-1
-0
-0
-0
-0
-0
-0
-0
-1
-0
-1
-0
-0
-0
-1
-1
-1
-0
-0
-1
-0
-0
-0
-1
-0
-0
-0
-0
-1
-1
-1
-1
-0
-1
-1
-1
-0
-0
-1
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-1
-0
-1
-0
-0
-0
-0
-0
-1
-0
-0
-1
-0
-0
-0
-0
-1
-1
-1
-1
-0
-0
-0
-0
-0
-1
-1
-0
-0
-1
-0
-0
-0
-0
-0
-0
-0
-1
-0
-0
-0
-0
-0
-0
-0
-0
-1
-1
-1
-0
-1
-0
-0
-1
-0
-0
-0
-0
-1
-0
-0
-1
-1
-1
-1
-1
-1
-1
-0
-0
-0
-0
-1
-1
-0
-0
-0
-1
-0
-0
-0
-0
-1
-0
-1
-0
-1
-0
-1
-0
-1
-0
-0
-0
-0
-0
-1
-0
-1
-0
-0
-0
-0
-0
-0
-0
-1
-0
-0
-1
-0
-1
-1
-1
-0
-1
-1
-0
-0
-0
-1
-0
-0
-0
-0
-1
-0
-0
-0
-0
-0
-1
-0
-0
-1
-1
-0
-0
-1
-0
-1
-0
-0
-1
-0
-0
-0
-0
-0
-0
-0
-0
-1
-0
-1
-0
-0
-0
-0
-0
-0
-0
-0
-1
-1
-1
-1
-0
-0
-0
-1
-0
-0
-0
-1
-1
-0
-0
-0
-0
-1
-0
-0
-0
-0
-0
-1
-1
-0
-0
-1
-1
-1
-1
-1
-0
-0
-0
-0
-1
-0
-1
-1
-1
-0
-0
-0
-1
-0
-1
-1
-0
-0
-1
-1
-1
-1
-0
-1
-0
-0
-0
-1
-1
-0
-0
-0
-1
-0
-0
-0
-0
-0
-1
-1
-0
-0
-0
-1
-0
-1
-0
-1
-0
-0
-0
-0
-0
-0
-0
-1
-1
-0
-0
-1
-0
-0
-0
-0
-0
-0
-1
-1
-1
-0
-0
-0
-0
-1
-1
-0
-1
-1
-0
-0
-0
-1
-0
-0
-0
-1
-0
-1
-0
-1
-0
-1
-"""
+"""# Fine-Tuned Toxic Word Cloud"""
 
-# Split the data by space and create a list of numbers
-numbers = space_delimited_data.split()
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+from nltk.corpus import stopwords
+import nltk
+import pandas as pd
+import string
 
-# Create a DataFrame with a single column
-df = pd.DataFrame({'Numbers': numbers})
+# Download NLTK resources (run only once)
+nltk.download('stopwords')
+nltk.download('punkt')
 
-# Export the DataFrame to Excel
-df.to_excel('/usr/robertafivehundo.xlsx', index=False)
+# Filter toxic comments
+toxic_comments = twitch_df[twitch_df['roberta_prediction'] == 1]['comment_text']
+print(toxic_comments.head(5))
+
+# Initialize NLTK stop words
+stop_words = set(stopwords.words('english'))
+
+# Extend the stop words list with additional common words to exclude
+additional_stop_words = ['today', "don't", 'like', 'know', 'and', 'the',
+                         'get', 'HasanAbi', 'hasanabi', 'Hasan', 'hasan', 'Abi',
+                         'dont', ',', 'got', 'cant', 'make',
+                         'see', 'im', 'make', 'think', 'one', 'every',
+                         'take', 'day', 'really']  # Add more words as needed
+stop_words.update(additional_stop_words)
+
+# Remove punctuation from comments
+def remove_punctuation(text):
+    return ''.join([char for char in text if char not in string.punctuation])
+
+cleaned_comments = ' '.join([comment for comment in toxic_comments])
+cleaned_comments = remove_punctuation(cleaned_comments)
+
+# Tokenize the cleaned comments
+tokens = nltk.word_tokenize(cleaned_comments)
+
+# Remove stop words
+tokens = [word for word in tokens if word.lower() not in stop_words]
+
+# Calculate word frequencies
+freq_dist = nltk.FreqDist(tokens)
+
+# Generate the word cloud with frequencies
+wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(freq_dist)
+
+# Plot the word cloud
+plt.figure(figsize=(10, 5))
+plt.imshow(wordcloud, interpolation='bilinear')
+plt.axis('off')
+plt.show()
