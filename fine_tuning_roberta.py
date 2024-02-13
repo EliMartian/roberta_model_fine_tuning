@@ -20,6 +20,9 @@ Original file is located at
 # !pip install --upgrade transformers
 # !pip install datasets
 
+!pip uninstall transformers
+!pip install transformers
+
 """# Preprocessing"""
 
 import csv
@@ -69,8 +72,8 @@ toxicity_train_df[categories_to_check] = toxicity_train_df[categories_to_check].
 toxicity_test_df[categories_to_check] = toxicity_test_df[categories_to_check].apply(pd.to_numeric, errors='coerce')
 
 # Check if any category is above the 0.5 threshold
-toxicity_train_df['toxic'] = (toxicity_train_df[categories_to_check] >= 0.5).any(axis=1).astype(float)
-toxicity_test_df['toxic'] = (toxicity_test_df[categories_to_check] >= 0.5).any(axis=1).astype(float)
+toxicity_train_df['toxic'] = (toxicity_train_df[categories_to_check] >= 0.25).any(axis=1).astype(float)
+toxicity_test_df['toxic'] = (toxicity_test_df[categories_to_check] >= 0.25).any(axis=1).astype(float)
 
 # Convert boolean values to 1.0 for True and 0.0 for False
 toxicity_train_df['toxic'] = toxicity_train_df['toxic'].astype(float)
@@ -79,9 +82,15 @@ toxicity_test_df['toxic'] = toxicity_test_df['toxic'].astype(float)
 toxicity_train_df = toxicity_train_df[['comment_text', 'toxic', 'obscene', 'sexual_explicit', 'threat', 'insult', 'identity_attack']]
 toxicity_test_df = toxicity_test_df[['comment_text', 'toxic', 'obscene', 'sexual_explicit', 'threat', 'insult', 'identity_attack']]
 
+print("\nClass distribution in training data before undersampling:")
+print(toxicity_train_df['toxic'].value_counts())
+
+print("\nClass distribution in test data before undersampling:")
+print(toxicity_test_df['toxic'].value_counts())
+
 
 # Fraction of the majority class you want to keep (e.g., 0.2 for 20%)
-undersample_fraction = 0.33
+undersample_fraction = 0.5
 
 # Separate the majority and minority classes in training data
 majority_class_train = toxicity_train_df[toxicity_train_df['toxic'] == 0]
@@ -100,12 +109,18 @@ toxicity_train_df = undersampled_train_df.sample(frac=1, random_state=42).reset_
 majority_class_test = toxicity_test_df[toxicity_test_df['toxic'] == 0]
 minority_class_test = toxicity_test_df[toxicity_test_df['toxic'] == 1]
 
-# Display the class distribution before and after undersampling
+# Display the class distribution after undersampling
 print("\nClass distribution in training data after undersampling:")
 print(toxicity_train_df['toxic'].value_counts())
 
-print("\nClass distribution in test data before undersampling:")
+print("\nClass distribution in test data after undersampling:")
 print(toxicity_test_df['toxic'].value_counts())
+
+print("Toxic train examples")
+print(toxicity_train_df.head(4))
+
+print("Toxic test examples")
+print(toxicity_test_df.head(4))
 
 """Test Lengths of DFs"""
 
@@ -315,17 +330,17 @@ loss_function = "bce_with_logits"  # Binary Cross-Entropy Loss
 # Define the training arguments (GPU Version)
 training_args = TrainingArguments(
     output_dir='./results',
-    num_train_epochs=2,
-    per_device_train_batch_size=16,
-    per_device_eval_batch_size=64,
+    num_train_epochs=5,
+    per_device_train_batch_size=32,
+    per_device_eval_batch_size=128,
     warmup_steps=200,
-    learning_rate=1e-5,
+    learning_rate=1e-6,
     weight_decay=0.01,
     logging_dir='./logs',
-    logging_steps=1230,
+    logging_steps=1000,
     evaluation_strategy="steps",
     save_strategy="steps",
-    save_steps=1230,
+    save_steps=1000,
     load_best_model_at_end=True,
     metric_for_best_model="eval_loss",
 )
@@ -355,15 +370,45 @@ model.save_pretrained('/results/fine_tuned_roberta_model')
 
 import numpy as np
 from sklearn.metrics import accuracy_score, classification_report
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.isotonic import IsotonicRegression
+from sklearn.linear_model import LogisticRegression
 
 # Use the trained model for evaluation
 eval_results = trainer.evaluate()
 
-# Print evaluation results
-print(eval_results)
+print("Evaluation results on the validation dataset:")
+for key, value in eval_results.items():
+    print(f"{key}: {value}")
 
 # Make predictions on the validation set
 predictions = trainer.predict(val_dataset)
+
+# Extract predicted labels and logits
+predicted_labels = predictions.predictions.squeeze()
+predicted_probs = 1 / (1 + np.exp(-predicted_labels))
+
+# Step 1: Collect Uncalibrated Predictions
+uncalibrated_predictions = predicted_labels
+
+# Step 2: Fit Calibration Model (Isotonic Regression)
+calibration_model = IsotonicRegression(out_of_bounds='clip')
+calibrated_probabilities = calibration_model.fit_transform(uncalibrated_predictions, val_labels)
+
+# Use a threshold of 0.50 to classify texts as toxic (1) or non-toxic (0)
+threshold = 0.50
+binary_predictions = (calibrated_probabilities >= threshold).astype(float)
+
+# Compare predicted labels with actual labels
+for i in range(len(val_texts)):
+    print(f"Text: {val_texts[i]}")
+    print(f"Predicted Probability: {calibrated_probabilities[i]}")
+    print(f"Predicted Label: {binary_predictions[i]}")
+    print(f"Actual Label: {val_labels[i]}")
+    print()
+
+
+
 
 # Convert predictions to probabilities and get class labels
 predicted_probabilities = torch.nn.functional.softmax(torch.tensor(predictions.predictions), dim=1)
@@ -381,11 +426,26 @@ print(classification_report(true_labels, predicted_labels))
 true_label_counts = np.bincount(true_labels.astype(int))
 
 # Count occurrences of each class in predicted labels
-predicted_label_counts = np.bincount(predicted_labels.numpy().astype(int))
+predicted_label_counts = np.bincount(binary_predictions.astype(int))
 
 # Print the counts
 print("True Label Counts (Class 0 and 1):", true_label_counts)
 print("Predicted Label Counts (Class 0 and 1):", predicted_label_counts)
+
+# Separate predicted probabilities based on actual labels
+toxic_probs = predicted_probs[np.where(np.array(val_labels) == 1)]
+non_toxic_probs = predicted_probs[np.where(np.array(val_labels) == 0)]
+
+# Plot histograms of predicted probabilities for both classes
+plt.figure(figsize=(12, 8))
+plt.hist(toxic_probs, bins=60, alpha=0.5, color='red', label='Toxic Comments')
+plt.hist(non_toxic_probs, bins=60, alpha=0.5, color='blue', label='Non-Toxic Comments')
+plt.xlabel('Predicted Probability')
+plt.ylabel('Frequency')
+plt.title('Distribution of Predicted Probabilities on Validation Set')
+plt.legend()
+plt.grid(True)
+plt.show()
 
 """# Predictions on Twitch Dataset"""
 
@@ -394,8 +454,8 @@ from transformers import RobertaTokenizer, AutoModelForSequenceClassification
 from transformers import pipeline
 
 # Load the fine-tuned model for inference
-tokenizer = RobertaTokenizer.from_pretrained('/content/results/checkpoint-1230/')
-model = AutoModelForSequenceClassification.from_pretrained('/content/results/checkpoint-1230/')
+tokenizer = RobertaTokenizer.from_pretrained('/content/results/checkpoint-3000/')
+model = AutoModelForSequenceClassification.from_pretrained('/content/results/checkpoint-3000/')
 
 twitch_df = pd.read_csv('twitch_toxicity.csv')
 print(twitch_df.head(6))
@@ -431,3 +491,758 @@ prediction_counts = twitch_df.head(300)['roberta_prediction'].value_counts()
 print("Count of 'no':", prediction_counts.get('no', 0))
 print("Count of 'yes':", prediction_counts.get('yes', 0))  # Adjust the label if needed
 
+"""# Native PyTorch (instead of HF Trainer)"""
+
+from torch.utils.data import DataLoader
+from transformers import AdamW
+
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+model = model = AutoModelForSequenceClassification.from_pretrained('roberta-base', num_labels=1)
+model.to(device)
+model.train()
+
+train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+
+optim = AdamW(model.parameters(), lr=1e-4)
+
+num_train_epochs = 1
+for epoch in range(num_train_epochs):
+  total_loss = 0.0
+  for batch_idx, batch in enumerate(train_loader):
+      optim.zero_grad()
+      input_ids = batch['input_ids'].to(device)
+      attention_mask = batch['attention_mask'].to(device)
+      labels = batch['labels'].to(device)
+
+      outputs = model(input_ids, attention_mask=attention_mask, labels=labels)
+
+      loss = outputs[0]
+      total_loss += loss.item()
+
+      loss.backward()
+      optim.step()
+
+      if (batch_idx + 1) % 100 == 0:  # Print progress every 100 batches
+          print(f"Epoch [{epoch + 1}/{num_train_epochs}], Batch [{batch_idx + 1}/{len(train_loader)}], Loss: {total_loss / (batch_idx + 1):.4f}")
+
+  print(f"Epoch [{epoch + 1}/{num_train_epochs}], Average Loss: {total_loss / len(train_loader):.4f}")
+#   for batch in train_loader:
+#     optim.zero_grad()
+#     input_ids = batch['input_ids'].to(device)
+#     attention_mask = batch['attention_mask'].to(device)
+#     labels = batch['labels'].to(device)
+
+#     outputs = model(input_ids, attention_mask=attention_mask, labels=labels)
+
+#     loss = outputs[0]
+#     loss.backward()
+#     optim.step()
+
+model.eval()
+
+model.save_pretrained('/usr/fine_tuned_roberta_model')
+
+model = AutoModelForSequenceClassification.from_pretrained('/usr/fine_tuned_roberta_model')
+
+val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False)
+
+# Assuming you have a validation DataLoader named val_loader
+num_toxic_correct = 0
+num_non_toxic_correct = 0
+total = 0
+
+with torch.no_grad():
+    for batch in val_loader:
+        input_ids = batch['input_ids'].to(device)
+        attention_mask = batch['attention_mask'].to(device)
+        labels = batch['labels'].to(device)
+
+        outputs = model(input_ids, attention_mask=attention_mask)
+
+        predictions = torch.sigmoid(outputs.logits).squeeze()  # Assuming binary classification and using sigmoid activation
+
+        predicted_labels = (predictions >= 0.5).float()
+
+        num_toxic_correct += ((predicted_labels == 1) & (labels == 1)).sum().item()
+        num_non_toxic_correct += ((predicted_labels == 0) & (labels == 0)).sum().item()
+        total += labels.size(0)
+
+accuracy_toxic = num_toxic_correct / total
+accuracy_non_toxic = num_non_toxic_correct / total
+
+print("Accuracy for toxic comments:", accuracy_toxic)
+print("Accuracy for non-toxic comments:", accuracy_non_toxic)
+
+"""# Default RoBERTa test as baseline"""
+
+import pandas as pd
+import numpy as np
+from transformers import RobertaTokenizer, AutoModelForSequenceClassification
+import torch
+import random
+
+# Set a fixed state for randomness
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
+torch.cuda.manual_seed_all(42)  # If using CUDA
+
+# Load the tokenizer and model for inference
+tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+model = AutoModelForSequenceClassification.from_pretrained('roberta-base')
+
+
+# Move the model to CPU if it's on CUDA device
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+model.to(device)
+
+# Put the model in evaluation mode
+model.eval()
+
+# Function to convert LABEL_0 to 'no'
+def convert_label(prediction):
+    return 'no' if prediction[0]['label'] == 'LABEL_0' else 'yes'
+
+global count
+count = 0
+
+def predict_label(row):
+    global count
+    text_to_predict = row['comment_text']
+    if(count <100):
+      print(text_to_predict)
+    encoding = tokenizer(text_to_predict, return_tensors='pt', padding=True, truncation=True)
+    input_ids = encoding['input_ids'].to(device)
+    attention_mask = encoding['attention_mask'].to(device)
+    with torch.no_grad():
+        outputs = model(input_ids, attention_mask=attention_mask)
+    logits = outputs.logits
+    probabilities = torch.sigmoid(logits).cpu().numpy().flatten()
+    if(count <100):
+      print(probabilities)
+    # Convert probabilities to binary labels
+    binary_label = 1 if ((np.abs(probabilities[1] - probabilities[0]) <= 0.035) and (probabilities[1] > 0.5275) and (probabilities[0] < 0.494)) else 0
+    count = count + 1
+    if (count % 100 == 0):
+      print(count)
+    if(count <100):
+      print(np.abs(probabilities[1] - probabilities[0]))
+      print(binary_label)
+    # if (binary_label == 1):
+    #   print(text_to_predict)
+    return binary_label
+
+# Load the Twitch dataset
+twitch_df = pd.read_csv('twitch_toxicity.csv')
+print(len(twitch_df))
+
+# Apply the prediction function to each row in the DataFrame
+twitch_df['roberta_prediction'] = twitch_df.head(200).apply(predict_label, axis=1)
+
+# Display the DataFrame with predictions
+print(twitch_df[['comment_text', 'roberta_prediction']])
+
+# Assuming 'LABEL_0' corresponds to 'no'
+prediction_counts = twitch_df.head(200)['roberta_prediction'].value_counts()
+print(prediction_counts)
+
+# Print the counts
+print("Count of 'no':", prediction_counts[0.0])
+print("Count of 'yes':", prediction_counts[1.0])  # Adjust the label if needed
+
+"""# Fine-Tuned Roberta on Twitch Dataset"""
+
+import pandas as pd
+import numpy as np
+from transformers import RobertaTokenizer, AutoModelForSequenceClassification
+import torch
+import random
+
+# Set a fixed state for randomness
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
+torch.cuda.manual_seed_all(42)  # If using CUDA
+
+# Load the tokenizer and model for inference
+tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+model = AutoModelForSequenceClassification.from_pretrained('/usr/fine_tuned_roberta_model')
+
+# Move the model to CPU if it's on CUDA device
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+model.to(device)
+
+# Put the model in evaluation mode
+model.eval()
+
+# Function to convert LABEL_0 to 'no'
+def convert_label(prediction):
+    return 'no' if prediction[0]['label'] == 'LABEL_0' else 'yes'
+
+global count
+global sub_mention
+sub_mention = False
+count = 0
+
+def predict_label(row):
+    global count
+    global sub_mention
+    text_to_predict = row['comment_text']
+    if ("Tier 1") in text_to_predict:
+      sub_mention = True
+    else:
+      sub_mention = False
+    # if(count <100):
+    #   print(text_to_predict)
+    encoding = tokenizer(text_to_predict, return_tensors='pt', padding=True, truncation=True)
+    input_ids = encoding['input_ids'].to(device)
+    attention_mask = encoding['attention_mask'].to(device)
+    with torch.no_grad():
+        outputs = model(input_ids, attention_mask=attention_mask)
+    logits = outputs.logits
+    probabilities = torch.sigmoid(logits).cpu().numpy().flatten()
+    # if(count <100):
+    #   print(probabilities)
+    # Convert probabilities to binary labels
+    binary_label = 1 if (np.abs(probabilities[0] > 0.592745) and not sub_mention) else 0
+    count = count + 1
+    # if (count % 100 == 0):
+    #   print(count)
+    # if(count <100):
+    #   print(np.abs(probabilities[0]))
+    #   print(binary_label)
+    # if (binary_label == 1):
+    #   print(text_to_predict)
+    print(binary_label)
+    return binary_label
+
+# Load the Twitch dataset
+twitch_df = pd.read_csv('twitch_toxicity.csv')
+print(len(twitch_df))
+
+# Apply the prediction function to each row in the DataFrame
+twitch_df['roberta_prediction'] = twitch_df.head(500).apply(predict_label, axis=1)
+
+# Display the DataFrame with predictions
+print(twitch_df[['comment_text', 'roberta_prediction']])
+
+# Assuming 'LABEL_0' corresponds to 'no'
+prediction_counts = twitch_df.head(500)['roberta_prediction'].value_counts()
+print(prediction_counts)
+
+# Print the counts
+print("Count of 'no':", prediction_counts[0.0])
+print("Count of 'yes':", prediction_counts[1.0])  # Adjust the label if needed
+
+space_delimited_data = """
+0
+0
+0
+1
+0
+0
+0
+0
+0
+1
+0
+0
+1
+0
+1
+0
+0
+0
+0
+0
+1
+0
+0
+0
+0
+1
+0
+1
+0
+1
+0
+0
+0
+0
+1
+0
+0
+1
+1
+0
+0
+0
+0
+0
+0
+1
+0
+0
+1
+1
+0
+0
+1
+0
+1
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+1
+0
+0
+0
+0
+1
+0
+1
+0
+0
+0
+0
+0
+0
+0
+1
+0
+0
+1
+0
+0
+0
+0
+0
+0
+0
+1
+0
+0
+0
+0
+1
+1
+0
+0
+0
+1
+0
+0
+1
+1
+0
+0
+0
+1
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+1
+1
+0
+0
+1
+0
+0
+0
+0
+0
+0
+1
+0
+0
+1
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+1
+0
+0
+1
+0
+0
+0
+0
+0
+0
+0
+1
+0
+1
+0
+0
+0
+1
+1
+1
+0
+0
+1
+0
+0
+0
+1
+0
+0
+0
+0
+1
+1
+1
+1
+0
+1
+1
+1
+0
+0
+1
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+1
+0
+1
+0
+0
+0
+0
+0
+1
+0
+0
+1
+0
+0
+0
+0
+1
+1
+1
+1
+0
+0
+0
+0
+0
+1
+1
+0
+0
+1
+0
+0
+0
+0
+0
+0
+0
+1
+0
+0
+0
+0
+0
+0
+0
+0
+1
+1
+1
+0
+1
+0
+0
+1
+0
+0
+0
+0
+1
+0
+0
+1
+1
+1
+1
+1
+1
+1
+0
+0
+0
+0
+1
+1
+0
+0
+0
+1
+0
+0
+0
+0
+1
+0
+1
+0
+1
+0
+1
+0
+1
+0
+0
+0
+0
+0
+1
+0
+1
+0
+0
+0
+0
+0
+0
+0
+1
+0
+0
+1
+0
+1
+1
+1
+0
+1
+1
+0
+0
+0
+1
+0
+0
+0
+0
+1
+0
+0
+0
+0
+0
+1
+0
+0
+1
+1
+0
+0
+1
+0
+1
+0
+0
+1
+0
+0
+0
+0
+0
+0
+0
+0
+1
+0
+1
+0
+0
+0
+0
+0
+0
+0
+0
+1
+1
+1
+1
+0
+0
+0
+1
+0
+0
+0
+1
+1
+0
+0
+0
+0
+1
+0
+0
+0
+0
+0
+1
+1
+0
+0
+1
+1
+1
+1
+1
+0
+0
+0
+0
+1
+0
+1
+1
+1
+0
+0
+0
+1
+0
+1
+1
+0
+0
+1
+1
+1
+1
+0
+1
+0
+0
+0
+1
+1
+0
+0
+0
+1
+0
+0
+0
+0
+0
+1
+1
+0
+0
+0
+1
+0
+1
+0
+1
+0
+0
+0
+0
+0
+0
+0
+1
+1
+0
+0
+1
+0
+0
+0
+0
+0
+0
+1
+1
+1
+0
+0
+0
+0
+1
+1
+0
+1
+1
+0
+0
+0
+1
+0
+0
+0
+1
+0
+1
+0
+1
+0
+1
+"""
+
+# Split the data by space and create a list of numbers
+numbers = space_delimited_data.split()
+
+# Create a DataFrame with a single column
+df = pd.DataFrame({'Numbers': numbers})
+
+# Export the DataFrame to Excel
+df.to_excel('/usr/robertafivehundo.xlsx', index=False)
