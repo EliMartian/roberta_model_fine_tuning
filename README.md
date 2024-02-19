@@ -1,4 +1,4 @@
-# roberta_model_fine_tuning
+# twitch_toxicity_detection
 Fine tuning the RoBERTa model on a Kaggle toxicity subclassification data set to be applied to Twitch stream comments to classify them into different 
 sub-categories of toxicity. Test and Train files not included as they exceed the size limit on Github. 
 
