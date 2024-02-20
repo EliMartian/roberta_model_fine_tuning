@@ -7,3 +7,7 @@ Kaggle Original Dataset: https://www.kaggle.com/c/jigsaw-unintended-bias-in-toxi
 Kaggle Test Set used: https://www.kaggle.com/c/jigsaw-unintended-bias-in-toxicity-classification/data?select=test_public_expanded.csv
 
 Twitch Dataset is a private resource of UWB otherwise would also be included.
+
+Then, the resulting model is once again fine-tuned, but now on the union between another RoBERTa fine-tuned variant and Llama zero-shot labeling to further enhance toxic comment detection reliability. 
+
+Warning: the content in this could be considered vulgar and viewer discretion is advised. All comments are real toxic comments from users on a particular Twitch stream.
