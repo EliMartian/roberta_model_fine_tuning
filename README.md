@@ -10,4 +10,4 @@ Twitch Dataset is a private resource of UWB otherwise would also be included.
 
 Then, the resulting model is once again fine-tuned, but now on the union between another RoBERTa fine-tuned variant and Llama zero-shot labeling to further enhance toxic comment detection reliability. 
 
-WARNING: the content in this could be considered vulgar and viewer discretion is advised. All comments are real toxic comments from users on a particular Twitch stream.
+WARNING: the content in this repo could be considered vulgar and viewer discretion is advised. All comments are real toxic comments from users on a particular Twitch stream.
