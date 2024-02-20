@@ -144,6 +144,60 @@ plt.ylabel('Comment Count')
 
 plt.show()
 
+"""# Word Cloud of Train Union Dataset"""
+
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+from nltk.corpus import stopwords
+import nltk
+import pandas as pd
+import string
+
+# Download NLTK resources (run only once)
+nltk.download('stopwords')
+nltk.download('punkt')
+
+# Filter toxic comments
+toxic_comments = toxicity_train_df[toxicity_train_df['union'] == 1]['comment_text']
+print(toxic_comments.head(5))
+
+# Initialize NLTK stop words
+stop_words = set(stopwords.words('english'))
+
+# Extend the stop words list with additional common words to exclude
+additional_stop_words = ['today', "don't", 'like', 'know', 'and', 'the',
+                         'get', 'HasanAbi', 'hasanabi', 'Hasan', 'hasan', 'Abi',
+                         'dont', ',', 'got', 'cant', 'make',
+                         'see', 'im', 'make', 'think', 'one', 'every',
+                         'take', 'day', 'really', 'Tier', 'tier', 'Tier 1',
+                         '1', 'Theyve', 'theyve', 'going', 'subscribed', 'months']  # Add more words as needed
+stop_words.update(additional_stop_words)
+
+# Remove punctuation from comments
+def remove_punctuation(text):
+    return ''.join([char for char in text if char not in string.punctuation])
+
+cleaned_comments = ' '.join([comment for comment in toxic_comments])
+cleaned_comments = remove_punctuation(cleaned_comments)
+
+# Tokenize the cleaned comments
+tokens = nltk.word_tokenize(cleaned_comments)
+
+# Remove stop words
+tokens = [word for word in tokens if word.lower() not in stop_words]
+
+# Calculate word frequencies
+freq_dist = nltk.FreqDist(tokens)
+
+# Generate the word cloud with frequencies
+wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(freq_dist)
+
+# Plot the word cloud
+plt.figure(figsize=(10, 5))
+plt.imshow(wordcloud, interpolation='bilinear')
+plt.axis('off')
+plt.show()
+
 """# Splitting and Labelling"""
 
 model_name = "roberta-base"
@@ -205,7 +259,7 @@ test_dataset = ToxicDataset(test_encodings, test_labels)
 
 print("Train Dataset")
 # Iterate over train_dataset and print some samples
-for i in range(3):  # Print first 3 samples
+for i in range(2):  # Print first 2 samples
     sample = train_dataset[i]
     print(f"Sample {i + 1}:")
     # Convert input_ids tensor to list and access its keys
@@ -216,7 +270,7 @@ for i in range(3):  # Print first 3 samples
 
 print("Val Dataset")
 # Iterate over val dataset and print some samples
-for i in range(3):  # Print first 3 samples
+for i in range(2):  # Print first 2 samples
     sample = val_dataset[i]
     print(f"Sample {i + 1}:")
     # Convert input_ids tensor to list and access its keys
@@ -227,7 +281,7 @@ for i in range(3):  # Print first 3 samples
 
 print("Test Dataset")
 # Iterate over test dataset and print some samples
-for i in range(3):  # Print first 3 samples
+for i in range(2):  # Print first 2 samples
     sample = test_dataset[i]
     print(f"Sample {i + 1}:")
     # Convert input_ids tensor to list and access its keys
@@ -242,6 +296,11 @@ from torch.utils.data import DataLoader
 from transformers import RobertaTokenizer, AutoModelForSequenceClassification
 from transformers import AdamW
 import torch
+
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
+torch.cuda.manual_seed_all(42)  # If using CUDA
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -270,21 +329,10 @@ for epoch in range(num_train_epochs):
       loss.backward()
       optim.step()
 
-      if (batch_idx + 1) % 20 == 0:  # Print progress every 2 batches
+      if (batch_idx + 1) % 20 == 0:  # Print progress every 20 batches
           print(f"Epoch [{epoch + 1}/{num_train_epochs}], Batch [{batch_idx + 1}/{len(train_loader)}], Loss: {total_loss / (batch_idx + 1):.4f}")
 
   print(f"Epoch [{epoch + 1}/{num_train_epochs}], Average Loss: {total_loss / len(train_loader):.4f}")
-#   for batch in train_loader:
-#     optim.zero_grad()
-#     input_ids = batch['input_ids'].to(device)
-#     attention_mask = batch['attention_mask'].to(device)
-#     labels = batch['labels'].to(device)
-
-#     outputs = model(input_ids, attention_mask=attention_mask, labels=labels)
-
-#     loss = outputs[0]
-#     loss.backward()
-#     optim.step()
 
 model.eval()
 
@@ -310,43 +358,46 @@ for file_path in file_paths:
             # Manually update progress bar
             pbar.update()
 
-model = AutoModelForSequenceClassification.from_pretrained('/usr/fine_tuned_roberta_model')
-model.to(device)
+# from better_profanity import profanity
+# model = AutoModelForSequenceClassification.from_pretrained('/usr/fine_tuned_roberta_model')
+# model.to(device)
 
-test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
+# test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
 
-# Assuming you have a validation DataLoader named val_loader
-num_toxic_correct = 0
-num_non_toxic_correct = 0
-total = 0
+# # Assuming you have a validation DataLoader named val_loader
+# num_toxic_correct = 0
+# num_non_toxic_correct = 0
+# total = 0
+# global count
+# global sub_mention
+# # global profanity
+# sub_mention = False
+# profanity_in = False
 
-with torch.no_grad():
-    for batch in test_loader:
-        input_ids = batch['input_ids'].to(device)
-        attention_mask = batch['attention_mask'].to(device)
-        labels = batch['labels'].to(device)
+# with torch.no_grad():
+#     for batch in test_loader:
+#         input_ids = batch['input_ids'].to(device)
+#         attention_mask = batch['attention_mask'].to(device)
+#         labels = batch['labels'].to(device)
+#         # print(input_ids)
+#         # print(attention_mask)
+#         # print(labels)
 
-        outputs = model(input_ids, attention_mask=attention_mask)
+#         outputs = model(input_ids, attention_mask=attention_mask)
 
-        predictions = torch.sigmoid(outputs.logits).squeeze()  # Assuming binary classification and using sigmoid activation
-        print(f"total: {total}")
-        print(f"predictions: {predictions}")
-        predicted_labels = (predictions >= 0.555).float()
-        print("predicted labels")
-        print(predicted_labels)
-        print("actual labels")
-        print(labels)
+#         predictions = torch.sigmoid(outputs.logits).squeeze()  # Assuming binary classification and using sigmoid activation
+#         predicted_labels = (predictions >= 0.555).float()
 
-        num_toxic_correct += ((predicted_labels == 1) & (labels == 1)).sum().item()
-        num_non_toxic_correct += ((predicted_labels == 0) & (labels == 0)).sum().item()
-        total += labels.size(0)
+#         num_toxic_correct += ((predicted_labels == 1) & (labels == 1)).sum().item()
+#         num_non_toxic_correct += ((predicted_labels == 0) & (labels == 0)).sum().item()
+#         total += labels.size(0)
 
-accuracy_toxic = num_toxic_correct / total
-accuracy_non_toxic = num_non_toxic_correct / total
+# accuracy_toxic = num_toxic_correct / total
+# accuracy_non_toxic = num_non_toxic_correct / total
 
-print("Total comments observed: ", total)
-print("Accuracy for toxic comments:", accuracy_toxic)
-print("Accuracy for non-toxic comments:", accuracy_non_toxic)
+# print("Total comments observed: ", total)
+# print("Accuracy for toxic comments:", accuracy_toxic)
+# print("Accuracy for non-toxic comments:", accuracy_non_toxic)
 
 """# Default RoBERTa test as baseline"""
 
@@ -539,7 +590,7 @@ def predict_label(row):
     # if(count <100):
     #   print(probabilities)
     # Convert probabilities to binary labels
-    binary_label = 1 if profanity_in or (np.abs(probabilities[0]) < 0.567 and not sub_mention) else 0
+    binary_label = 1 if profanity_in or (np.abs(probabilities[0]) < 0.56475 and not sub_mention) else 0
     count = count + 1
     if (count % 500 == 0):
       print(count)
@@ -621,6 +672,68 @@ tokens = nltk.word_tokenize(cleaned_comments)
 
 # Remove stop words
 tokens = [word for word in tokens if word.lower() not in stop_words]
+
+# Calculate word frequencies
+freq_dist = nltk.FreqDist(tokens)
+
+# Generate the word cloud with frequencies
+wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(freq_dist)
+
+# Plot the word cloud
+plt.figure(figsize=(10, 5))
+plt.imshow(wordcloud, interpolation='bilinear')
+plt.axis('off')
+plt.show()
+
+"""# Wordcloud without Trump Podcast comment spammed"""
+
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+from nltk.corpus import stopwords
+import nltk
+import pandas as pd
+import string
+
+# Download NLTK resources (run only once)
+nltk.download('stopwords')
+nltk.download('punkt')
+
+# Filter toxic comments
+toxic_comments = twitch_df[twitch_df['union_prediction'] == 1]['comment_text']
+print(toxic_comments.head(5))
+
+# batch_size = 1000  # Set the batch size
+# num_rows = len(twitch_df)
+# with open('union_output.txt', 'w') as f:
+#     for start in range(0, num_rows, batch_size):
+#         end = min(start + batch_size, num_rows)
+#         for index, row in twitch_df.iloc[start:end].iterrows():
+#             f.write(str(row['union_prediction']) + '\n')
+
+# Initialize NLTK stop words
+stop_words = set(stopwords.words('english'))
+
+# Extend the stop words list with additional common words to exclude
+additional_stop_words = ['today', "don't", 'like', 'know', 'and', 'the',
+                         'get', 'HasanAbi', 'hasanabi', 'Hasan', 'hasan', 'Abi',
+                         'dont', ',', 'got', 'cant', 'make', 'hes', 'back',
+                         'see', 'im', 'make', 'think', 'one', 'every', 'running',
+                         'take', 'day', 'really', 'Trump', 'EPISODE', 'PODCAST', 'Episode',
+                         'Podcast', 'leftovers', 'trump', 'episode', 'podcast']  # Add more words as needed
+stop_words.update(additional_stop_words)
+
+# Remove punctuation from comments
+def remove_punctuation(text):
+    return ''.join([char for char in text if char not in string.punctuation])
+
+cleaned_comments = ' '.join([comment for comment in toxic_comments])
+cleaned_comments = remove_punctuation(cleaned_comments)
+
+# Convert all words to lowercase before removing stopwords
+tokens = [word.lower() for word in tokens]
+
+# Remove stop words
+tokens = [word for word in tokens if word not in stop_words]
 
 # Calculate word frequencies
 freq_dist = nltk.FreqDist(tokens)
