@@ -40,32 +40,29 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 # 4. Load pretrained Model
 # 5. Load HF Trainer and train it
 
-# Train Data (Roberta + Llama Union), 11449 rows
-toxicity_train_df = pd.read_csv('toxic_union.csv',  on_bad_lines='skip')
+# Train Data - 52662 rows after pre-processing (done above)
+toxicity_train_df = pd.read_csv('toxicity_train.csv', on_bad_lines='skip', quoting=csv.QUOTE_NONE)
 toxicity_train_df = toxicity_train_df.dropna()
 
 # Test Data - 7287 rows after pre-processing
 toxicity_test_df = pd.read_csv('toxicity_test.csv', on_bad_lines='skip', quoting=csv.QUOTE_NONE)
 toxicity_test_df = toxicity_test_df.dropna()
 
-# Train Data - 52662 rows after pre-processing (done above)
-# toxicity_train_df = pd.read_csv('toxicity_train.csv', on_bad_lines='skip', quoting=csv.QUOTE_NONE)
-
 # List of categories to check
 categories_to_check = ['obscene', 'sexual_explicit', 'threat', 'insult', 'identity_attack']
 
-# toxicity_train_df[categories_to_check] = toxicity_train_df[categories_to_check].apply(pd.to_numeric, errors='coerce')
+toxicity_train_df[categories_to_check] = toxicity_train_df[categories_to_check].apply(pd.to_numeric, errors='coerce')
 toxicity_test_df[categories_to_check] = toxicity_test_df[categories_to_check].apply(pd.to_numeric, errors='coerce')
 
-# # Check if any category is above the 0.33 threshold
-# toxicity_train_df['toxic'] = (toxicity_train_df[categories_to_check] >= 0.25).any(axis=1).astype(float)
+# Check if any category is above the 0.25 threshold
+toxicity_train_df['toxic'] = (toxicity_train_df[categories_to_check] >= 0.25).any(axis=1).astype(float)
 toxicity_test_df['toxic'] = (toxicity_test_df[categories_to_check] >= 0.25).any(axis=1).astype(float)
 
 # # Convert boolean values to 1.0 for True and 0.0 for False
-# toxicity_train_df['toxic'] = toxicity_train_df['toxic'].astype(float)
+toxicity_train_df['toxic'] = toxicity_train_df['toxic'].astype(float)
 toxicity_test_df['toxic'] = toxicity_test_df['toxic'].astype(float)
 
-# toxicity_train_df = toxicity_train_df[['comment_text', 'toxic', 'obscene', 'sexual_explicit', 'threat', 'insult', 'identity_attack']]
+toxicity_train_df = toxicity_train_df[['comment_text', 'toxic', 'obscene', 'sexual_explicit', 'threat', 'insult', 'identity_attack']]
 toxicity_test_df = toxicity_test_df[['comment_text', 'toxic', 'obscene', 'sexual_explicit', 'threat', 'insult', 'identity_attack']]
 
 # print("\nClass distribution in training data before undersampling:")
@@ -73,6 +70,10 @@ toxicity_test_df = toxicity_test_df[['comment_text', 'toxic', 'obscene', 'sexual
 
 # print("\nClass distribution in test data before undersampling:")
 # print(toxicity_test_df['toxic'].value_counts())
+
+sample_rate = 0.99
+
+toxicity_train_df = toxicity_train_df.sample(frac=sample_rate, random_state=42)
 
 
 
@@ -103,6 +104,11 @@ toxicity_test_df = toxicity_test_df[['comment_text', 'toxic', 'obscene', 'sexual
 # print("\nClass distribution in test data after undersampling:")
 # print(toxicity_test_df['toxic'].value_counts())
 
+# desired_size = 50000
+
+# # Randomly sample rows from the DataFrame
+# toxicity_train_df = toxicity_train_df.sample(n=desired_size, random_state=42)
+
 print("Toxic train examples")
 print(toxicity_train_df.head(4))
 
@@ -117,7 +123,7 @@ print(len(toxicity_test_df))
 """# Visualization of toxicity in train"""
 
 # Count toxic and non-toxic comments
-toxic_count = toxicity_train_df['union'].sum()
+toxic_count = toxicity_train_df['toxic'].sum()
 non_toxic_count = len(toxicity_train_df) - toxic_count
 
 # Plot side-by-side bars for toxic and non-toxic comments
@@ -144,60 +150,6 @@ plt.ylabel('Comment Count')
 
 plt.show()
 
-"""# Word Cloud of Train Union Dataset"""
-
-from wordcloud import WordCloud
-import matplotlib.pyplot as plt
-from nltk.corpus import stopwords
-import nltk
-import pandas as pd
-import string
-
-# Download NLTK resources (run only once)
-nltk.download('stopwords')
-nltk.download('punkt')
-
-# Filter toxic comments
-toxic_comments = toxicity_train_df[toxicity_train_df['union'] == 1]['comment_text']
-print(toxic_comments.head(5))
-
-# Initialize NLTK stop words
-stop_words = set(stopwords.words('english'))
-
-# Extend the stop words list with additional common words to exclude
-additional_stop_words = ['today', "don't", 'like', 'know', 'and', 'the',
-                         'get', 'HasanAbi', 'hasanabi', 'Hasan', 'hasan', 'Abi',
-                         'dont', ',', 'got', 'cant', 'make',
-                         'see', 'im', 'make', 'think', 'one', 'every',
-                         'take', 'day', 'really', 'Tier', 'tier', 'Tier 1',
-                         '1', 'Theyve', 'theyve', 'going', 'subscribed', 'months']  # Add more words as needed
-stop_words.update(additional_stop_words)
-
-# Remove punctuation from comments
-def remove_punctuation(text):
-    return ''.join([char for char in text if char not in string.punctuation])
-
-cleaned_comments = ' '.join([comment for comment in toxic_comments])
-cleaned_comments = remove_punctuation(cleaned_comments)
-
-# Tokenize the cleaned comments
-tokens = nltk.word_tokenize(cleaned_comments)
-
-# Remove stop words
-tokens = [word for word in tokens if word.lower() not in stop_words]
-
-# Calculate word frequencies
-freq_dist = nltk.FreqDist(tokens)
-
-# Generate the word cloud with frequencies
-wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(freq_dist)
-
-# Plot the word cloud
-plt.figure(figsize=(10, 5))
-plt.imshow(wordcloud, interpolation='bilinear')
-plt.axis('off')
-plt.show()
-
 """# Splitting and Labelling"""
 
 model_name = "roberta-base"
@@ -207,12 +159,12 @@ toxicity_train_df.reset_index(drop=True, inplace=True)
 toxicity_test_df.reset_index(drop=True, inplace=True)
 
 # Select relevant columns from DataFrame and drop NaN values
-train_data = toxicity_train_df[['comment_text', 'union']].dropna()
+train_data = toxicity_train_df[['comment_text', 'toxic']].dropna()
 test_data = toxicity_test_df[['comment_text', 'toxic']].dropna()
 
 # Extract features and labels
 train_texts = train_data['comment_text'].tolist()
-train_labels = train_data['union'].tolist()
+train_labels = train_data['toxic'].tolist()
 test_texts = test_data['comment_text'].tolist()
 test_labels = test_data['toxic'].tolist()
 
@@ -296,21 +248,22 @@ from torch.utils.data import DataLoader
 from transformers import RobertaTokenizer, AutoModelForSequenceClassification
 from transformers import AdamW
 import torch
+import random
 
 random.seed(42)
 np.random.seed(42)
 torch.manual_seed(42)
-torch.cuda.manual_seed_all(42)  # If using CUDA
+torch.cuda.manual_seed_all(42)
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-model = model = AutoModelForSequenceClassification.from_pretrained('roberta-base', num_labels=1)
+model = AutoModelForSequenceClassification.from_pretrained('roberta-base', num_labels=1)
 model.to(device)
 model.train()
 
 train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
 
-optim = AdamW(model.parameters(), lr=1e-6)
+optim = AdamW(model.parameters(), lr=1e-5)
 
 num_train_epochs = 1
 for epoch in range(num_train_epochs):
@@ -434,7 +387,7 @@ count = 0
 
 def predict_label(row):
     global count
-    text_to_predict = row['comment_text']
+    text_to_predict = row['comment']
 
     encoding = tokenizer(text_to_predict, return_tensors='pt', padding=True, truncation=True)
     input_ids = encoding['input_ids'].to(device)
@@ -446,12 +399,14 @@ def predict_label(row):
     # if(count <100):
     #   print(probabilities)
     # Convert probabilities to binary labels
-    binary_label = 1 if ((np.abs(probabilities[1] - probabilities[0]) <= 0.035) and (probabilities[1] > 0.5275) and (probabilities[0] < 0.494)) else 0
+    # probs[0] < 0.5425 && abs <= 0.061
+    binary_label = 1 if ((np.abs(probabilities[1] - probabilities[0]) <= 0.061) and (probabilities[0] < 0.5425)) else 0
     count = count + 1
     if (count % 500 == 0):
       print(count)
-    if(count < 10):
+    if(count < 90):
       print(text_to_predict)
+      print(probabilities)
       print(np.abs(probabilities[1] - probabilities[0]))
       print(binary_label)
     # if (binary_label == 1):
@@ -459,7 +414,7 @@ def predict_label(row):
     return binary_label
 
 # Load the Twitch dataset
-twitch_df = pd.read_csv('/usr/twitch_toxicity.csv')
+twitch_df = pd.read_csv('hasan_abi_11.19.22_test.csv')
 print(len(twitch_df))
 
 # Apply the prediction function to each row in the DataFrame
@@ -489,7 +444,7 @@ nltk.download('punkt')
 print(twitch_df.info())
 
 # Filter toxic comments
-toxic_comments = twitch_df[twitch_df['base_prediction'] == 1]['comment_text']
+toxic_comments = twitch_df[twitch_df['base_prediction'] == 1]['comment']
 print(toxic_comments.head(5))
 
 # Initialize NLTK stop words
@@ -529,9 +484,9 @@ plt.imshow(wordcloud, interpolation='bilinear')
 plt.axis('off')
 plt.show()
 
-"""# Fine-Tuned Roberta on Twitch Dataset"""
+!pip install better-profanity
 
-pip install better-profanity
+"""# Fine-Tuned Roberta on Wikipedia Dataset"""
 
 import pandas as pd
 import numpy as np
@@ -575,7 +530,7 @@ def predict_label(row):
     global count
     global sub_mention
     # global profanity
-    text_to_predict = row['comment_text']
+    text_to_predict = row['comment']
     sub_mention = any(keyword in text_to_predict for keyword in ["Tier 1", "subscribed with Prime", "subbed using Prime"])
     profanity_in = profanity.contains_profanity(text_to_predict)
     # if(count <100):
@@ -590,11 +545,12 @@ def predict_label(row):
     # if(count <100):
     #   print(probabilities)
     # Convert probabilities to binary labels
-    binary_label = 1 if profanity_in or (np.abs(probabilities[0]) < 0.56475 and not sub_mention) else 0
+    # < 0.545 or > 0.6 should get flagged as TOXIC
+    binary_label = 1 if profanity_in or (np.abs(probabilities[0]) > 0.57418 and np.abs(probabilities[0]) < 0.57422 and not sub_mention)else 0
     count = count + 1
     if (count % 500 == 0):
       print(count)
-    if(count < 50):
+    if(count < 90):
       print(np.abs(probabilities[0]))
       print(text_to_predict)
       print(binary_label)
@@ -604,24 +560,32 @@ def predict_label(row):
     return binary_label
 
 # Load the Twitch dataset
-twitch_df = pd.read_csv('/usr/twitch_toxicity.csv')
+twitch_df = pd.read_csv('hasan_abi_11.19.22_test.csv')
 print(len(twitch_df))
 
 # Apply the prediction function to each row in the DataFrame
-twitch_df['union_prediction'] = twitch_df.apply(predict_label, axis=1)
+twitch_df['roberta_wiki_prediction'] = twitch_df.apply(predict_label, axis=1)
 
 # Display the DataFrame with predictions
-print(twitch_df[['comment_text', 'union_prediction']])
+# print(twitch_df[['comment', 'roberta_wiki_prediction']])
 
 # Assuming 'LABEL_0' corresponds to 'no'
-prediction_counts = twitch_df['union_prediction'].value_counts()
+prediction_counts = twitch_df['roberta_wiki_prediction'].value_counts()
 print(prediction_counts)
 
 # Print the counts
 print("Count of 'no':", prediction_counts[0.0])
 print("Count of 'yes':", prediction_counts[1.0])  # Adjust the label if needed
 
-"""# Fine-Tuned Toxic Word Cloud"""
+"""Save Predictions for Fine-Tuned Wikipedia Model"""
+
+# Define the file path for the Excel file
+excel_file_path = "/usr/roberta_wiki_predictions.xlsx"
+
+# Save the 'roberta_wiki_prediction' column to an Excel file
+twitch_df['roberta_wiki_prediction'].to_excel(excel_file_path, index=False)
+
+"""# Fine-Tuned Wikipedia Toxic Word Cloud"""
 
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
@@ -635,7 +599,7 @@ nltk.download('stopwords')
 nltk.download('punkt')
 
 # Filter toxic comments
-toxic_comments = twitch_df[twitch_df['union_prediction'] == 1]['comment_text']
+toxic_comments = twitch_df[twitch_df['roberta_wiki_prediction'] == 1]['comment']
 print(toxic_comments.head(5))
 
 batch_size = 1000  # Set the batch size
@@ -644,10 +608,10 @@ with open('union_output.txt', 'w') as f:
     for start in range(0, num_rows, batch_size):
         end = min(start + batch_size, num_rows)
         for index, row in twitch_df.iloc[start:end].iterrows():
-            f.write(str(row['union_prediction']) + '\n')
+            f.write(str(row['roberta_wiki_prediction']) + '\n')
 
-from google.colab import files
-files.download('union_output.txt')
+# from google.colab import files
+# files.download('union_output.txt')
 
 # Initialize NLTK stop words
 stop_words = set(stopwords.words('english'))
@@ -709,6 +673,492 @@ print(toxic_comments.head(5))
 #         end = min(start + batch_size, num_rows)
 #         for index, row in twitch_df.iloc[start:end].iterrows():
 #             f.write(str(row['union_prediction']) + '\n')
+
+# Initialize NLTK stop words
+stop_words = set(stopwords.words('english'))
+
+# Extend the stop words list with additional common words to exclude
+additional_stop_words = ['today', "don't", 'like', 'know', 'and', 'the',
+                         'get', 'HasanAbi', 'hasanabi', 'Hasan', 'hasan', 'Abi',
+                         'dont', ',', 'got', 'cant', 'make', 'hes', 'back',
+                         'see', 'im', 'make', 'think', 'one', 'every', 'running',
+                         'take', 'day', 'really', 'Trump', 'EPISODE', 'PODCAST', 'Episode',
+                         'Podcast', 'leftovers', 'trump', 'episode', 'podcast']  # Add more words as needed
+stop_words.update(additional_stop_words)
+
+# Remove punctuation from comments
+def remove_punctuation(text):
+    return ''.join([char for char in text if char not in string.punctuation])
+
+cleaned_comments = ' '.join([comment for comment in toxic_comments])
+cleaned_comments = remove_punctuation(cleaned_comments)
+
+# Convert all words to lowercase before removing stopwords
+tokens = [word.lower() for word in tokens]
+
+# Remove stop words
+tokens = [word for word in tokens if word not in stop_words]
+
+# Calculate word frequencies
+freq_dist = nltk.FreqDist(tokens)
+
+# Generate the word cloud with frequencies
+wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(freq_dist)
+
+# Plot the word cloud
+plt.figure(figsize=(10, 5))
+plt.imshow(wordcloud, interpolation='bilinear')
+plt.axis('off')
+plt.show()
+
+"""# Preprocessing on Twitch Union dataset"""
+
+import csv
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import torch
+import torch.nn.functional as F
+from torch.utils.data import Dataset
+from transformers import Trainer, TrainingArguments
+from sklearn.model_selection import train_test_split
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+
+
+# 1. Prepare Dataset
+# 2. Load pretrained Tokenizer, call it with dataset -> encoding
+# 3. Build PyTorth Dataset with encodings
+# 4. Load pretrained Model
+# 5. Load HF Trainer and train it
+
+# Train Data (Roberta + Llama Union), 11449 rows
+toxicity_train_df = pd.read_csv('/toxic_union.csv',  on_bad_lines='skip')
+toxicity_train_df = toxicity_train_df.dropna()
+
+# Test Data - 7287 rows after pre-processing
+toxicity_test_df = pd.read_csv('toxicity_test.csv', on_bad_lines='skip', quoting=csv.QUOTE_NONE)
+toxicity_test_df = toxicity_test_df.dropna()
+
+# Train Data - 52662 rows after pre-processing (done above)
+# toxicity_train_df = pd.read_csv('toxicity_train.csv', on_bad_lines='skip', quoting=csv.QUOTE_NONE)
+
+# List of categories to check
+categories_to_check = ['obscene', 'sexual_explicit', 'threat', 'insult', 'identity_attack']
+
+# toxicity_train_df[categories_to_check] = toxicity_train_df[categories_to_check].apply(pd.to_numeric, errors='coerce')
+toxicity_test_df[categories_to_check] = toxicity_test_df[categories_to_check].apply(pd.to_numeric, errors='coerce')
+
+# # Check if any category is above the 0.33 threshold
+# toxicity_train_df['toxic'] = (toxicity_train_df[categories_to_check] >= 0.25).any(axis=1).astype(float)
+toxicity_test_df['toxic'] = (toxicity_test_df[categories_to_check] >= 0.25).any(axis=1).astype(float)
+
+# # Convert boolean values to 1.0 for True and 0.0 for False
+# toxicity_train_df['toxic'] = toxicity_train_df['toxic'].astype(float)
+toxicity_test_df['toxic'] = toxicity_test_df['toxic'].astype(float)
+
+# toxicity_train_df = toxicity_train_df[['comment_text', 'toxic', 'obscene', 'sexual_explicit', 'threat', 'insult', 'identity_attack']]
+toxicity_test_df = toxicity_test_df[['comment_text', 'toxic', 'obscene', 'sexual_explicit', 'threat', 'insult', 'identity_attack']]
+
+
+print("Toxic train examples")
+print(toxicity_train_df.head(4))
+
+print("Toxic test examples")
+print(toxicity_test_df.head(4))
+
+"""# Visualization of Toxicity in Union Dataset"""
+
+# Count toxic and non-toxic comments
+toxic_count = toxicity_train_df['union'].sum()
+non_toxic_count = len(toxicity_train_df) - toxic_count
+
+# Plot side-by-side bars for toxic and non-toxic comments
+labels = ['Toxic Comments', 'Non-Toxic Comments']
+counts = [toxic_count, non_toxic_count]
+
+plt.bar(labels, counts, color=['red', 'blue'])
+plt.ylabel('Comment Count')
+
+plt.show()
+
+"""# Union Dataset Wordcloud
+
+***What are the most common toxic words in our Union Dataset?***
+
+Union Dataset: Represents the union of Llama 7-b zero-shot labeling, and RoBERTa NLP model fine-tuned on Wikipedia comments on toxic Twitch comments
+"""
+
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+from nltk.corpus import stopwords
+import nltk
+import pandas as pd
+import string
+
+# Download NLTK resources (run only once)
+nltk.download('stopwords')
+nltk.download('punkt')
+
+# Filter toxic comments
+toxic_comments = toxicity_train_df[toxicity_train_df['union'] == 1]['comment_text']
+print(toxic_comments.head(5))
+
+# Initialize NLTK stop words
+stop_words = set(stopwords.words('english'))
+
+# Extend the stop words list with additional common words to exclude
+additional_stop_words = ['today', "don't", 'like', 'know', 'and', 'the',
+                         'get', 'HasanAbi', 'hasanabi', 'Hasan', 'hasan', 'Abi',
+                         'dont', ',', 'got', 'cant', 'make',
+                         'see', 'im', 'make', 'think', 'one', 'every',
+                         'take', 'day', 'really', 'Tier', 'tier', 'Tier 1',
+                         '1', 'Theyve', 'theyve', 'going', 'subscribed', 'months']  # Add more words as needed
+stop_words.update(additional_stop_words)
+
+# Remove punctuation from comments
+def remove_punctuation(text):
+    return ''.join([char for char in text if char not in string.punctuation])
+
+cleaned_comments = ' '.join([comment for comment in toxic_comments])
+cleaned_comments = remove_punctuation(cleaned_comments)
+
+# Tokenize the cleaned comments
+tokens = nltk.word_tokenize(cleaned_comments)
+
+# Remove stop words
+tokens = [word for word in tokens if word.lower() not in stop_words]
+
+# Calculate word frequencies
+freq_dist = nltk.FreqDist(tokens)
+
+# Generate the word cloud with frequencies
+wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(freq_dist)
+
+# Plot the word cloud
+plt.figure(figsize=(10, 5))
+plt.imshow(wordcloud, interpolation='bilinear')
+plt.axis('off')
+plt.show()
+
+"""# Test Stream Word Cloud
+
+Displays the test stream word cloud to visualize how the predictive the double fine-tuned model is (this is the before).
+"""
+
+# from wordcloud import WordCloud
+# import matplotlib.pyplot as plt
+# from nltk.corpus import stopwords
+# import nltk
+# import pandas as pd
+# import string
+
+# # Download NLTK resources (run only once)
+# nltk.download('stopwords')
+# nltk.download('punkt')
+
+# # Filter toxic comments
+# toxic_comments = toxicity_train_df[toxicity_train_df['union'] == 1]['comment_text']
+# print(toxic_comments.head(5))
+
+# # Initialize NLTK stop words
+# stop_words = set(stopwords.words('english'))
+
+# # Extend the stop words list with additional common words to exclude
+# additional_stop_words = ['today', "don't", 'like', 'know', 'and', 'the',
+#                          'get', 'HasanAbi', 'hasanabi', 'Hasan', 'hasan', 'Abi',
+#                          'dont', ',', 'got', 'cant', 'make',
+#                          'see', 'im', 'make', 'think', 'one', 'every',
+#                          'take', 'day', 'really', 'Tier', 'tier', 'Tier 1',
+#                          '1', 'Theyve', 'theyve', 'going', 'subscribed', 'months']  # Add more words as needed
+# stop_words.update(additional_stop_words)
+
+# # Remove punctuation from comments
+# def remove_punctuation(text):
+#     return ''.join([char for char in text if char not in string.punctuation])
+
+# cleaned_comments = ' '.join([comment for comment in toxic_comments])
+# cleaned_comments = remove_punctuation(cleaned_comments)
+
+# # Tokenize the cleaned comments
+# tokens = nltk.word_tokenize(cleaned_comments)
+
+# # Remove stop words
+# tokens = [word for word in tokens if word.lower() not in stop_words]
+
+# # Calculate word frequencies
+# freq_dist = nltk.FreqDist(tokens)
+
+# # Generate the word cloud with frequencies
+# wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(freq_dist)
+
+# # Plot the word cloud
+# plt.figure(figsize=(10, 5))
+# plt.imshow(wordcloud, interpolation='bilinear')
+# plt.axis('off')
+# plt.show()
+
+"""# Splitting & Labeling + Dataset creation
+
+
+"""
+
+from torch.utils.data import Dataset, DataLoader
+from transformers import RobertaTokenizer, RobertaModel
+
+# Reset index to ensure consistency
+toxicity_train_df.reset_index(drop=True, inplace=True)
+toxicity_test_df.reset_index(drop=True, inplace=True)
+
+# Select relevant columns from DataFrame and drop NaN values
+train_data = toxicity_train_df[['comment_text', 'union']].dropna()
+test_data = toxicity_test_df[['comment_text', 'toxic']].dropna()
+
+# Extract features and labels
+train_texts = train_data['comment_text'].tolist()
+train_labels = train_data['union'].tolist()
+test_texts = test_data['comment_text'].tolist()
+test_labels = test_data['toxic'].tolist()
+
+# Print examples of texts & labels
+print("train_texts:")
+print(train_texts[:5])
+print("train_labels:")
+print(train_labels[:5])
+print("test_texts")
+print(test_texts[:5])
+print("test_labels:")
+print(test_labels[:5])
+
+# Split train data into train and validation sets
+train_texts, val_texts, train_labels, val_labels = train_test_split(train_texts, train_labels, test_size=0.2)
+
+
+class ToxicDataset(Dataset):
+    def __init__(self, encodings, labels):
+        self.encodings = encodings
+        self.labels = labels
+
+    def __getitem__(self, idx):
+        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
+        item['labels'] = torch.tensor(self.labels[idx]).float()
+        return item
+
+    def __len__(self):
+        return len(self.labels)
+
+tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+train_encodings = tokenizer(train_texts, truncation=True, padding=True)
+val_encodings = tokenizer(val_texts, truncation=True, padding=True)
+test_encodings = tokenizer(test_texts, truncation=True, padding=True)
+
+train_dataset = ToxicDataset(train_encodings, train_labels)
+val_dataset = ToxicDataset(val_encodings, val_labels)
+test_dataset = ToxicDataset(test_encodings, test_labels)
+
+print("Train Dataset")
+# Iterate over train_dataset and print some samples
+for i in range(2):  # Print first 2 samples
+    sample = train_dataset[i]
+    print(f"Sample {i + 1}:")
+    # Convert input_ids tensor to list and access its keys
+    encoding_keys = tokenizer.convert_ids_to_tokens(sample["input_ids"].tolist())
+    print("Encoding keys:", encoding_keys)  # Print keys of encoding
+    print("Label:", sample["labels"].item())  # Print label
+    print()
+
+print("Val Dataset")
+# Iterate over val dataset and print some samples
+for i in range(2):  # Print first 2 samples
+    sample = val_dataset[i]
+    print(f"Sample {i + 1}:")
+    # Convert input_ids tensor to list and access its keys
+    encoding_keys = tokenizer.convert_ids_to_tokens(sample["input_ids"].tolist())
+    print("Encoding keys:", encoding_keys)  # Print keys of encoding
+    print("Label:", sample["labels"].item())  # Print label
+    print()
+
+print("Test Dataset")
+# Iterate over test dataset and print some samples
+for i in range(2):  # Print first 2 samples
+    sample = test_dataset[i]
+    print(f"Sample {i + 1}:")
+    # Convert input_ids tensor to list and access its keys
+    encoding_keys = tokenizer.convert_ids_to_tokens(sample["input_ids"].tolist())
+    print("Encoding keys:", encoding_keys)  # Print keys of encoding
+    print("Label:", sample["labels"].item())  # Print label
+    print()
+
+"""# Training on Union"""
+
+from torch.utils.data import DataLoader
+from transformers import RobertaTokenizer, AutoModelForSequenceClassification
+from transformers import AdamW
+import torch
+
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
+torch.cuda.manual_seed_all(42)
+
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+model = AutoModelForSequenceClassification.from_pretrained('/usr/fine_tuned_roberta_model')
+model.to(device)
+model.train()
+
+train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+
+optim = AdamW(model.parameters(), lr=1e-6)
+
+num_train_epochs = 1
+for epoch in range(num_train_epochs):
+  total_loss = 0.0
+  for batch_idx, batch in enumerate(train_loader):
+      optim.zero_grad()
+      input_ids = batch['input_ids'].to(device)
+      attention_mask = batch['attention_mask'].to(device)
+      labels = batch['labels'].to(device)
+
+      outputs = model(input_ids, attention_mask=attention_mask, labels=labels)
+
+      loss = outputs[0]
+      total_loss += loss.item()
+
+      loss.backward()
+      optim.step()
+
+      if (batch_idx + 1) % 20 == 0:  # Print progress every 20 batches
+          print(f"Epoch [{epoch + 1}/{num_train_epochs}], Batch [{batch_idx + 1}/{len(train_loader)}], Loss: {total_loss / (batch_idx + 1):.4f}")
+
+  print(f"Epoch [{epoch + 1}/{num_train_epochs}], Average Loss: {total_loss / len(train_loader):.4f}")
+
+model.eval()
+
+model.save_pretrained('/usr/fine_tuned_roberta_model_union')
+
+"""# Fine-tuned Union (RoBERTa / Llama) Predictions"""
+
+import pandas as pd
+import numpy as np
+from transformers import RobertaTokenizer, AutoModelForSequenceClassification
+import torch
+import random
+from better_profanity import profanity
+
+# Set a fixed state for randomness
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
+torch.cuda.manual_seed_all(42)  # If using CUDA
+
+# Load the tokenizer and model for inference
+tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+model = AutoModelForSequenceClassification.from_pretrained('/usr/fine_tuned_roberta_model_union')
+
+# Move the model to CPU if it's on CUDA device
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+model.to(device)
+
+# Put the model in evaluation mode
+model.eval()
+
+# Function to convert LABEL_0 to 'no'
+def convert_label(prediction):
+    return 'no' if prediction[0]['label'] == 'LABEL_0' else 'yes'
+
+def contains_profanity(text):
+    return profanity_check.predict([text])[0]
+
+global count
+global sub_mention
+# global profanity
+sub_mention = False
+profanity_in = False
+count = 0
+
+def predict_label(row):
+    global count
+    global sub_mention
+    # global profanity
+    text_to_predict = row['comment']
+    sub_mention = any(keyword in text_to_predict for keyword in ["Tier 1", "subscribed with Prime", "subbed using Prime"])
+    profanity_in = profanity.contains_profanity(text_to_predict)
+    # if(count <100):
+    #   print(text_to_predict)
+    encoding = tokenizer(text_to_predict, return_tensors='pt', padding=True, truncation=True)
+    input_ids = encoding['input_ids'].to(device)
+    attention_mask = encoding['attention_mask'].to(device)
+    with torch.no_grad():
+        outputs = model(input_ids, attention_mask=attention_mask)
+    logits = outputs.logits
+    probabilities = torch.sigmoid(logits).cpu().numpy().flatten()
+    # if(count <100):
+    #   print(probabilities)
+    # Convert probabilities to binary labels
+    binary_label = 1 if profanity_in or (np.abs(probabilities[0]) > 0.58738 and not sub_mention) else 0
+    count = count + 1
+    if (count % 500 == 0):
+      print(count)
+    if(count < 80):
+      print(np.abs(probabilities[0]))
+      print(text_to_predict)
+      print(binary_label)
+    # if (binary_label == 1):
+    #   print(text_to_predict)
+    # print(binary_label)
+    return binary_label
+
+# Load the Twitch dataset
+twitch_df = pd.read_csv('hasan_abi_11.19.22_test.csv')
+print(len(twitch_df))
+
+# Apply the prediction function to each row in the DataFrame
+twitch_df['union_prediction'] = twitch_df.apply(predict_label, axis=1)
+
+# Display the DataFrame with predictions
+# print(twitch_df[['comment', 'union_prediction']])
+
+# Assuming 'LABEL_0' corresponds to 'no'
+prediction_counts = twitch_df['union_prediction'].value_counts()
+print(prediction_counts)
+
+# Print the counts
+print("Count of 'no':", prediction_counts[0.0])
+print("Count of 'yes':", prediction_counts[1.0])  # Adjust the label if needed
+
+# Define the file path for the Excel file
+excel_file_path = "/usr/roberta_union_predictions.xlsx"
+
+# Save the 'roberta_wiki_prediction' column to an Excel file
+twitch_df['union_prediction'].to_excel(excel_file_path, index=False)
+
+"""# Double fine-tuned WordCloud"""
+
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+from nltk.corpus import stopwords
+import nltk
+import pandas as pd
+import string
+
+# Download NLTK resources (run only once)
+nltk.download('stopwords')
+nltk.download('punkt')
+
+# Filter toxic comments
+toxic_comments = twitch_df[twitch_df['union_prediction'] == 1]['comment']
+print(toxic_comments.head(5))
+
+# batch_size = 1000  # Set the batch size
+# num_rows = len(twitch_df)
+# with open('union_output.txt', 'w') as f:
+#     for start in range(0, num_rows, batch_size):
+#         end = min(start + batch_size, num_rows)
+#         for index, row in twitch_df.iloc[start:end].iterrows():
+#             f.write(str(row['union_prediction']) + '\n')
+
+from google.colab import files
+files.download('union_output.txt')
 
 # Initialize NLTK stop words
 stop_words = set(stopwords.words('english'))
